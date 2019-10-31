@@ -41,7 +41,7 @@ func New(key ci.PrivKey) (*Transport, error) {
 	return t, nil
 }
 
-//var _ sec.SecureTransport = &Transport{}
+var _ sec.SecureTransport = &Transport{}
 
 // SecureInbound runs the TLS handshake as a server.
 func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn) (sec.SecureConn, error) {

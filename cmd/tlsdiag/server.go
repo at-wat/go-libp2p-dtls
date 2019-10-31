@@ -65,8 +65,6 @@ func handleConn(tp *libp2pdtls.Transport, conn net.Conn) error {
 	}
 	fmt.Printf("Authenticated client: %s\n", sconn.RemotePeer().Pretty())
 	fmt.Fprintf(sconn, "Hello client!")
-
-	//time.Sleep(5 * time.Second)
 	fmt.Printf("Closing connection to %s\n", conn.RemoteAddr())
 	return sconn.Close()
 }
