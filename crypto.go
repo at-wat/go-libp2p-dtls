@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -45,7 +46,8 @@ func NewIdentity(privKey ic.PrivKey) (*Identity, error) {
 			Certificate: cert,
 			PrivateKey: certKey,
 			ClientAuth: dtls.RequireAnyClientCert,
-			InsecureSkipVerify:       true, // This is not insecure here. We will verify the cert ourselves.
+			InsecureSkipVerify: true, // This is not insecure here. We will verify the cert ourselves.
+			//ExtendedMasterSecret: dtls.DisableExtendedMasterSecret,
 			VerifyPeerCertificate: func(_ *x509.Certificate, _ bool) error {
 			  panic("dtls config not specialized for peer")
 			},
@@ -62,7 +64,7 @@ func (i *Identity) ConfigForAny() (*dtls.Config, <-chan ic.PubKey) {
 // certificate chain and returns the peer's public key via the channel. If the
 // peer ID is empty, the returned config will accept any peer.
 //
-// It should be used to create a new tls.Config before securing either an
+// It should be used to create a new dtls.Config before securing either an
 // incoming or outgoing connection.
 func (i *Identity) ConfigForPeer(remote peer.ID) (*dtls.Config, <-chan ic.PubKey) {
 	keyCh := make(chan ic.PubKey, 1)
@@ -74,9 +76,16 @@ func (i *Identity) ConfigForPeer(remote peer.ID) (*dtls.Config, <-chan ic.PubKey
 		PrivateKey: i.config.PrivateKey,
 		ClientAuth: i.config.ClientAuth,
 		InsecureSkipVerify: i.config.InsecureSkipVerify,
+		ExtendedMasterSecret: i.config.ExtendedMasterSecret,
 	}
+
 	// We're using InsecureSkipVerify, so the valid parameter will always be false.
+	callCount := 0
 	conf.VerifyPeerCertificate = func(peerCert *x509.Certificate, valid bool) error {
+		callCount += 1
+		if callCount > 1 {
+			return nil
+		}
 		defer close(keyCh)
 
 		pubKey, err := PubKeyFromCert(peerCert)
@@ -137,7 +146,7 @@ func PubKeyFromCert(cert *x509.Certificate) (ic.PubKey, error) {
 	return pubKey, nil
 }
 
-func keyToCertificate(sk ic.PrivKey) (*x509.Certificate, *crypto.PrivateKey, error) {
+func keyToCertificate(sk ic.PrivKey) (*x509.Certificate, crypto.PrivateKey, error) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, err
@@ -168,17 +177,37 @@ func keyToCertificate(sk ic.PrivKey) (*x509.Certificate, *crypto.PrivateKey, err
 		return nil, nil, err
 	}
 
-	privKey := crypto.PrivateKey(certKey)
+	origin := make([]byte, 16)
 
-	return &x509.Certificate{
+
+	template := x509.Certificate{
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
+		},
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		Version:               2,
+		IsCA: true,
 		SerialNumber: sn,
 		NotBefore:    time.Time{},
 		NotAfter:     time.Now().Add(certValidityPeriod),
-		// after calling CreateCertificate, these will end up in Certificate.Extensions
+		Subject:               pkix.Name{CommonName: hex.EncodeToString(origin)},
+		//after calling CreateCertificate, these will end up in Certificate.Extensions
 		ExtraExtensions: []pkix.Extension{
 			{Id: extensionID, Value: value},
 		},
-	},
-	&privKey,
-	nil
+	}
+
+	raw, err := x509.CreateCertificate(rand.Reader, &template, &template, &certKey.PublicKey, certKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	finalCert, err := x509.ParseCertificate(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return finalCert, certKey, nil
 }
