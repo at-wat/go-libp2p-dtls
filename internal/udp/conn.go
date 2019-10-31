@@ -1,3 +1,15 @@
+// This file is lifted directly from github.com/pion/dtls/internal/udp
+// since the non-internal Listener type calls dtls.Server on all new
+// incoming connections. We need to call that ourselves with a custom
+// dtls config so we can get the remote peer identity.
+//
+// IMO, we probably don't want to use this long term - packet oriented
+// libp2p will probably want to work directly with PacketConn to have
+// more flexibility, whereas this creates "pseudo Conn"s for each
+// remote that sends us packets on the internal PacketConn.
+// The nice thing about this is that we can use these Conns with the existing
+// libp2p SecureTransport interface.
+
 package udp
 
 import (
