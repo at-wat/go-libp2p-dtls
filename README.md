@@ -59,7 +59,7 @@ Run the server:
 
 ``` shell
 go run cmd/tlsdiag.go server
- fsGenerated new peer with an ECDSA key. Peer ID: QmNqcy4tn62doEvRqyEPrnp4yaPHTJUhmVot3C6J4Ade2f
+Generated new peer with an ECDSA key. Peer ID: QmNqcy4tn62doEvRqyEPrnp4yaPHTJUhmVot3C6J4Ade2f
 Listening for new connections on 127.0.0.1:5533
 Now run the following command in a separate terminal:
         go run cmd/tlsdiag.go client -p 5533 -id QmNqcy4tn62doEvRqyEPrnp4yaPHTJUhmVot3C6J4Ade2f
