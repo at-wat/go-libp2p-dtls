@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/pion/dtls"
@@ -79,14 +80,14 @@ func (i *Identity) ConfigForPeer(remote peer.ID) (*dtls.Config, <-chan ic.PubKey
 		ExtendedMasterSecret: i.config.ExtendedMasterSecret,
 	}
 
+	// The pion DTLS handshake handler calls VerifyPeerCertificate multiple times,
+	// so we guard against sending on a closed key channel
+	sendOnce := sync.Once{}
+	closeOnce := sync.Once{}
+
 	// We're using InsecureSkipVerify, so the valid parameter will always be false.
-	callCount := 0
 	conf.VerifyPeerCertificate = func(peerCert *x509.Certificate, valid bool) error {
-		callCount += 1
-		if callCount > 1 {
-			return nil
-		}
-		defer close(keyCh)
+		defer closeOnce.Do(func () { close(keyCh) })
 
 		pubKey, err := PubKeyFromCert(peerCert)
 		if err != nil {
@@ -95,7 +96,7 @@ func (i *Identity) ConfigForPeer(remote peer.ID) (*dtls.Config, <-chan ic.PubKey
 		if remote != "" && !remote.MatchesPublicKey(pubKey) {
 			return errors.New("peer IDs don't match")
 		}
-		keyCh <- pubKey
+		sendOnce.Do(func () { keyCh <- pubKey })
 		return nil
 	}
 	return &conf, keyCh
